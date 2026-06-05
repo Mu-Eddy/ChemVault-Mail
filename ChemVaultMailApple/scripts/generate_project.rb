@@ -32,12 +32,18 @@ def add_files_to_group(group, base_path, pattern)
   end.compact
 end
 
-source_refs = add_files_to_group(app_group, File.join(root, app_name), '**/*.{swift,plist}')
+source_refs = add_files_to_group(app_group, File.join(root, app_name), '**/*.{swift,plist,png,jpg,jpeg}')
 swift_source_refs = source_refs.select { |ref| ref.path.end_with?('.swift') }
+resource_refs = source_refs.select { |ref| ref.path.match?(/\.(png|jpe?g)\z/i) }
 
 swift_source_refs.each do |ref|
   ios_target.add_file_references([ref])
   mac_target.add_file_references([ref])
+end
+
+resource_refs.each do |ref|
+  ios_target.add_resources([ref])
+  mac_target.add_resources([ref])
 end
 
 test_refs = add_files_to_group(tests_group, File.join(root, tests_name), '**/*.swift')

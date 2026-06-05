@@ -1,4 +1,9 @@
 import SwiftUI
+#if os(macOS)
+import AppKit
+#elseif canImport(UIKit)
+import UIKit
+#endif
 
 struct ContentView: View {
     @EnvironmentObject private var authSession: AuthSession
@@ -91,8 +96,7 @@ struct ChemVaultLoadingView: View {
         switch presentation {
         case .startup:
             ZStack {
-                ChemVaultLoadingStyle.pageBackground
-                    .ignoresSafeArea()
+                ChemVaultBrandBackground()
                 loadingContent
                     .padding(.horizontal, 28)
                     .padding(.vertical, 34)
@@ -151,6 +155,7 @@ struct ChemVaultLoadingMark: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var isRotating = false
     @State private var isPulsing = false
+    @State private var isHaloVisible = false
 
     var size: CGFloat = 30
     var showsTrack = true
@@ -159,28 +164,38 @@ struct ChemVaultLoadingMark: View {
         ZStack {
             if showsTrack {
                 Circle()
-                    .stroke(ChemVaultLoadingConfiguration.primaryColor.opacity(0.14), lineWidth: max(1, size * 0.06))
+                    .stroke(ChemVaultLoadingConfiguration.primaryColor.opacity(0.12), lineWidth: max(1, size * 0.04))
+
+                Circle()
+                    .stroke(ChemVaultLoadingConfiguration.primaryColor.opacity(isHaloVisible ? 0.24 : 0.05), lineWidth: max(1, size * 0.03))
+                    .scaleEffect(isHaloVisible ? 1.18 : 0.88)
+                    .animation(haloAnimation, value: isHaloVisible)
             }
 
-            ForEach(0..<ChemVaultLoadingConfiguration.dotCount, id: \.self) { index in
-                Circle()
-                    .fill(ChemVaultLoadingConfiguration.primaryColor)
-                    .frame(width: dotSize, height: dotSize)
-                    .opacity(isPulsing ? 1 : 0.3)
-                    .scaleEffect(isPulsing ? 1 : 0.72)
-                    .offset(dotOffset(for: index))
-                    .animation(dotAnimation(for: index), value: isPulsing)
+            ZStack {
+                ForEach(0..<ChemVaultLoadingConfiguration.dotCount, id: \.self) { index in
+                    Circle()
+                        .fill(ChemVaultLoadingConfiguration.primaryColor)
+                        .frame(width: dotSize, height: dotSize)
+                        .opacity(isPulsing ? 1 : 0.3)
+                        .scaleEffect(isPulsing ? 1 : 0.72)
+                        .offset(orbitOffset(for: index))
+                        .animation(dotAnimation(for: index), value: isPulsing)
+                }
             }
+            .rotationEffect(.degrees(isRotating ? 360 : 0))
+            .animation(rotationAnimation, value: isRotating)
+
+            ChemVaultLogoBadge(size: size * 0.58, shadowRadius: showsTrack ? 8 : 0)
         }
         .frame(width: size, height: size)
-        .rotationEffect(.degrees(isRotating ? 360 : 0))
-        .animation(rotationAnimation, value: isRotating)
         .onAppear {
             if reduceMotion {
                 isPulsing = true
             } else {
                 isRotating = true
                 isPulsing = true
+                isHaloVisible = true
             }
         }
         .accessibilityHidden(true)
@@ -190,18 +205,10 @@ struct ChemVaultLoadingMark: View {
         size * 0.22
     }
 
-    private func dotOffset(for index: Int) -> CGSize {
+    private func orbitOffset(for index: Int) -> CGSize {
         let radius = size * 0.32
-        switch index {
-        case 0:
-            return CGSize(width: -radius, height: -radius)
-        case 1:
-            return CGSize(width: radius, height: -radius)
-        case 2:
-            return CGSize(width: radius, height: radius)
-        default:
-            return CGSize(width: -radius, height: radius)
-        }
+        let angle = (Double(index) / Double(ChemVaultLoadingConfiguration.dotCount)) * 2 * Double.pi
+        return CGSize(width: cos(angle) * radius, height: sin(angle) * radius)
     }
 
     private func dotAnimation(for index: Int) -> Animation? {
@@ -216,14 +223,94 @@ struct ChemVaultLoadingMark: View {
         return .linear(duration: ChemVaultLoadingConfiguration.rotationDuration)
             .repeatForever(autoreverses: false)
     }
+
+    private var haloAnimation: Animation? {
+        guard !reduceMotion else { return nil }
+        return .easeInOut(duration: 1.35)
+            .repeatForever(autoreverses: true)
+    }
 }
 
-private enum ChemVaultLoadingStyle {
-    static var pageBackground: Color {
-        #if os(macOS)
-        Color(nsColor: .windowBackgroundColor)
-        #else
-        Color(uiColor: .systemGroupedBackground)
-        #endif
+enum ChemVaultBrandAssets {
+    static let backgroundImageName = "ChemVaultLoginBackground"
+    static let logoImageName = "ChemVaultLogo"
+    static let loginCardMaxWidth: CGFloat = 430
+    static let loginWatermarkOpacity = 0.08
+}
+
+struct ChemVaultBrandBackground: View {
+    var body: some View {
+        GeometryReader { proxy in
+            ChemVaultBundleImage(name: ChemVaultBrandAssets.backgroundImageName)
+                .aspectRatio(contentMode: .fill)
+                .frame(width: proxy.size.width, height: proxy.size.height, alignment: .leading)
+                .clipped()
+
+            LinearGradient(
+                colors: [
+                    .white.opacity(0.18),
+                    .white.opacity(0.42),
+                    .white.opacity(0.1)
+                ],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+        }
+        .ignoresSafeArea()
     }
+}
+
+struct ChemVaultLogoBadge: View {
+    var size: CGFloat
+    var shadowRadius: CGFloat = 8
+
+    var body: some View {
+        ChemVaultBundleImage(name: ChemVaultBrandAssets.logoImageName)
+            .scaledToFit()
+            .frame(width: size, height: size)
+            .background(.white.opacity(0.7), in: Circle())
+            .shadow(color: .black.opacity(shadowRadius > 0 ? 0.08 : 0), radius: shadowRadius, x: 0, y: shadowRadius * 0.4)
+    }
+}
+
+struct ChemVaultBundleImage: View {
+    var name: String
+
+    var body: some View {
+#if os(macOS)
+        if let image = ChemVaultBundleImages.nsImage(named: name) {
+            Image(nsImage: image)
+                .resizable()
+        } else {
+            Color.clear
+        }
+#elseif canImport(UIKit)
+        if let image = ChemVaultBundleImages.uiImage(named: name) {
+            Image(uiImage: image)
+                .resizable()
+        } else {
+            Color.clear
+        }
+#else
+        Color.clear
+#endif
+    }
+}
+
+private enum ChemVaultBundleImages {
+#if os(macOS)
+    static func nsImage(named name: String) -> NSImage? {
+        if let url = Bundle.main.url(forResource: name, withExtension: "png") {
+            return NSImage(contentsOf: url)
+        }
+        return NSImage(named: NSImage.Name(name))
+    }
+#elseif canImport(UIKit)
+    static func uiImage(named name: String) -> UIImage? {
+        if let url = Bundle.main.url(forResource: name, withExtension: "png") {
+            return UIImage(contentsOfFile: url.path)
+        }
+        return UIImage(named: name)
+    }
+#endif
 }

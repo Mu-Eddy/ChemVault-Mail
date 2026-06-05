@@ -59,6 +59,13 @@ final class APIEnvelopeTests: XCTestCase {
         XCTAssertEqual(ChemVaultLoadingConfiguration.title, "ChemVault Mail")
     }
 
+    func testChemVaultBrandAssetsMatchNativeLoginDesign() {
+        XCTAssertEqual(ChemVaultBrandAssets.backgroundImageName, "ChemVaultLoginBackground")
+        XCTAssertEqual(ChemVaultBrandAssets.logoImageName, "ChemVaultLogo")
+        XCTAssertEqual(ChemVaultBrandAssets.loginCardMaxWidth, 430)
+        XCTAssertEqual(ChemVaultBrandAssets.loginWatermarkOpacity, 0.08)
+    }
+
     func testBuildsAccountActionRequests() async throws {
         AccountRequestURLProtocol.reset()
         let client = makeStubbedClient()
