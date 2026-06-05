@@ -8,6 +8,9 @@ struct LoginView: View {
     @State private var password = ""
     @State private var showingRegister = false
     @State private var showingEndpointSettings = false
+    @State private var hasAppeared = false
+    @State private var submitPulse = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @FocusState private var focusedField: Field?
 
     var body: some View {
@@ -30,6 +33,16 @@ struct LoginView: View {
                 }
             }
         }
+        .onAppear {
+            guard !hasAppeared else { return }
+            if reduceMotion {
+                hasAppeared = true
+            } else {
+                withAnimation(.spring(response: 0.58, dampingFraction: 0.84)) {
+                    hasAppeared = true
+                }
+            }
+        }
         .sheet(isPresented: $showingRegister) {
             RegisterView()
         }
@@ -41,48 +54,43 @@ struct LoginView: View {
     }
 
     private func loginCard(width: CGFloat) -> some View {
-        ZStack(alignment: .topTrailing) {
-            ChemVaultBundleImage(name: ChemVaultBrandAssets.logoImageName)
-                .scaledToFit()
-                .frame(width: 170, height: 170)
-                .opacity(ChemVaultBrandAssets.loginWatermarkOpacity)
-                .offset(x: 58, y: 28)
-                .allowsHitTesting(false)
+        VStack(spacing: 22) {
+            loginHeader
 
-            VStack(spacing: 22) {
-                loginHeader
-
-                VStack(spacing: 14) {
-                    emailField
-                    passwordField
-                }
-
-                if let lastError = authSession.lastError {
-                    errorBanner(lastError)
-                }
-
-                Button {
-                    submit()
-                } label: {
-                    Group {
-                        if authSession.state == .checking {
-                            ChemVaultLoadingButtonLabel(title: "Signing In", size: 18)
-                        } else {
-                            Label("Sign in", systemImage: "arrow.right.circle.fill")
-                        }
-                    }
-                    .font(.headline)
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 48)
-                }
-                .buttonStyle(ChemVaultPrimaryButtonStyle())
-                .disabled(isSubmitDisabled)
-
-                loginActions
+            VStack(spacing: 14) {
+                emailField
+                passwordField
             }
-            .padding(.horizontal, 24)
-            .padding(.vertical, 28)
+
+            if let lastError = authSession.lastError {
+                errorBanner(lastError)
+                    .transition(.opacity.combined(with: .move(edge: .top)))
+            }
+
+            Button {
+                submit()
+            } label: {
+                Group {
+                    if authSession.state == .checking {
+                        ChemVaultLoadingButtonLabel(title: "Signing In", size: 18)
+                    } else {
+                        Label("Sign in", systemImage: "arrow.right.circle.fill")
+                    }
+                }
+                .font(.headline)
+                .frame(maxWidth: .infinity)
+                .frame(height: 48)
+            }
+            .buttonStyle(ChemVaultPrimaryButtonStyle())
+            .disabled(isSubmitDisabled)
+            .scaleEffect(submitPulse ? 0.985 : 1)
+            .animation(.spring(response: 0.24, dampingFraction: 0.74), value: submitPulse)
+            .animation(.easeInOut(duration: 0.22), value: authSession.state)
+
+            loginActions
         }
+        .padding(.horizontal, 24)
+        .padding(.vertical, 28)
         .frame(width: width)
         .background(.white.opacity(0.9), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
         .overlay {
@@ -90,6 +98,11 @@ struct LoginView: View {
                 .stroke(.white.opacity(0.82), lineWidth: 1)
         }
         .shadow(color: LoginStyle.shadow.opacity(0.18), radius: 28, x: 0, y: 18)
+        .opacity(hasAppeared ? 1 : 0)
+        .offset(y: hasAppeared ? 0 : 18)
+        .scaleEffect(hasAppeared ? 1 : 0.985)
+        .animation(reduceMotion ? nil : .spring(response: 0.58, dampingFraction: 0.84), value: hasAppeared)
+        .animation(.easeInOut(duration: 0.2), value: authSession.lastError)
     }
 
     private var loginHeader: some View {
@@ -198,6 +211,9 @@ struct LoginView: View {
         }
         .buttonStyle(.plain)
         .frame(width: width)
+        .opacity(hasAppeared ? 1 : 0)
+        .offset(y: hasAppeared ? 0 : 12)
+        .animation(reduceMotion ? nil : .easeOut(duration: 0.42).delay(0.12), value: hasAppeared)
     }
 
     private func errorBanner(_ message: String) -> some View {
@@ -219,8 +235,16 @@ struct LoginView: View {
 
     private func submit() {
         focusedField = nil
+        withAnimation(.spring(response: 0.24, dampingFraction: 0.74)) {
+            submitPulse = true
+        }
         Task {
             await authSession.login(email: loginEmail, password: password)
+            await MainActor.run {
+                withAnimation(.spring(response: 0.24, dampingFraction: 0.74)) {
+                    submitPulse = false
+                }
+            }
         }
     }
 
@@ -289,11 +313,16 @@ private struct ChemVaultLoginField<Content: View>: View {
                 RoundedRectangle(cornerRadius: 8, style: .continuous)
                     .stroke(isFocused ? ChemVaultLoadingConfiguration.primaryColor.opacity(0.55) : LoginStyle.fieldBorder, lineWidth: 1)
             }
+            .shadow(color: ChemVaultLoadingConfiguration.primaryColor.opacity(isFocused ? 0.16 : 0), radius: 10, x: 0, y: 5)
+            .scaleEffect(isFocused ? 1.01 : 1)
+            .animation(.easeInOut(duration: 0.18), value: isFocused)
         }
     }
 }
 
 private struct ChemVaultPrimaryButtonStyle: ButtonStyle {
+    @Environment(\.isEnabled) private var isEnabled
+
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .foregroundStyle(.white)
@@ -306,11 +335,13 @@ private struct ChemVaultPrimaryButtonStyle: ButtonStyle {
                     startPoint: .topLeading,
                     endPoint: .bottomTrailing
                 )
-                .opacity(configuration.isPressed ? 0.82 : 1),
+                .opacity(isEnabled ? (configuration.isPressed ? 0.82 : 1) : 0.54),
                 in: RoundedRectangle(cornerRadius: 8, style: .continuous)
             )
             .shadow(color: ChemVaultLoadingConfiguration.primaryColor.opacity(configuration.isPressed ? 0.12 : 0.26), radius: 14, x: 0, y: 8)
             .scaleEffect(configuration.isPressed ? 0.985 : 1)
+            .animation(.spring(response: 0.2, dampingFraction: 0.76), value: configuration.isPressed)
+            .animation(.easeInOut(duration: 0.2), value: isEnabled)
     }
 }
 
@@ -319,6 +350,8 @@ private struct ChemVaultLinkButtonStyle: ButtonStyle {
         configuration.label
             .font(.footnote.weight(.semibold))
             .foregroundStyle(configuration.isPressed ? ChemVaultLoadingConfiguration.primaryColor.opacity(0.65) : ChemVaultLoadingConfiguration.primaryColor)
+            .scaleEffect(configuration.isPressed ? 0.96 : 1)
+            .animation(.spring(response: 0.2, dampingFraction: 0.76), value: configuration.isPressed)
     }
 }
 

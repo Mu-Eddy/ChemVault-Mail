@@ -63,7 +63,10 @@ final class APIEnvelopeTests: XCTestCase {
         XCTAssertEqual(ChemVaultBrandAssets.backgroundImageName, "ChemVaultLoginBackground")
         XCTAssertEqual(ChemVaultBrandAssets.logoImageName, "ChemVaultLogo")
         XCTAssertEqual(ChemVaultBrandAssets.loginCardMaxWidth, 430)
-        XCTAssertEqual(ChemVaultBrandAssets.loginWatermarkOpacity, 0.08)
+        XCTAssertEqual(ChemVaultBrandAssets.loginWatermarkOpacity, 0)
+        XCTAssertEqual(ChemVaultBrandAssets.compactBackgroundBreakpoint, 700)
+        XCTAssertEqual(ChemVaultBrandAssets.compactBackgroundBrandWidthMultiplier, 1.18)
+        XCTAssertEqual(ChemVaultBrandAssets.compactBackgroundBrandMaxHeight, 260)
     }
 
     func testBuildsAccountActionRequests() async throws {

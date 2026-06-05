@@ -235,26 +235,54 @@ enum ChemVaultBrandAssets {
     static let backgroundImageName = "ChemVaultLoginBackground"
     static let logoImageName = "ChemVaultLogo"
     static let loginCardMaxWidth: CGFloat = 430
-    static let loginWatermarkOpacity = 0.08
+    static let loginWatermarkOpacity: Double = 0
+    static let compactBackgroundBreakpoint: CGFloat = 700
+    static let compactBackgroundBrandWidthMultiplier: CGFloat = 1.18
+    static let compactBackgroundBrandMaxHeight: CGFloat = 260
 }
 
 struct ChemVaultBrandBackground: View {
     var body: some View {
         GeometryReader { proxy in
-            ChemVaultBundleImage(name: ChemVaultBrandAssets.backgroundImageName)
-                .aspectRatio(contentMode: .fill)
-                .frame(width: proxy.size.width, height: proxy.size.height, alignment: .leading)
-                .clipped()
+            let isCompact = proxy.size.width < ChemVaultBrandAssets.compactBackgroundBreakpoint
 
-            LinearGradient(
-                colors: [
-                    .white.opacity(0.18),
-                    .white.opacity(0.42),
-                    .white.opacity(0.1)
-                ],
-                startPoint: .top,
-                endPoint: .bottom
-            )
+            ZStack(alignment: .top) {
+                ChemVaultBundleImage(name: ChemVaultBrandAssets.backgroundImageName)
+                    .aspectRatio(contentMode: .fill)
+                    .frame(width: proxy.size.width, height: proxy.size.height, alignment: .leading)
+                    .clipped()
+
+                if isCompact {
+                    ChemVaultBundleImage(name: ChemVaultBrandAssets.backgroundImageName)
+                        .aspectRatio(contentMode: .fit)
+                        .frame(width: proxy.size.width * ChemVaultBrandAssets.compactBackgroundBrandWidthMultiplier)
+                        .frame(maxHeight: ChemVaultBrandAssets.compactBackgroundBrandMaxHeight, alignment: .top)
+                        .clipped()
+                        .mask(
+                            LinearGradient(
+                                stops: [
+                                    .init(color: .black, location: 0),
+                                    .init(color: .black, location: 0.72),
+                                    .init(color: .clear, location: 1)
+                                ],
+                                startPoint: .top,
+                                endPoint: .bottom
+                            )
+                        )
+                        .opacity(0.84)
+                        .allowsHitTesting(false)
+                }
+
+                LinearGradient(
+                    colors: [
+                        .white.opacity(0.1),
+                        .white.opacity(isCompact ? 0.24 : 0.36),
+                        .white.opacity(0.08)
+                    ],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+            }
         }
         .ignoresSafeArea()
     }
