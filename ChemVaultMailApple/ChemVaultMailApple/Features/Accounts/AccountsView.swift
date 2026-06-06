@@ -3,6 +3,7 @@ import SwiftUI
 struct AccountsView: View {
     @EnvironmentObject private var appEnvironment: AppEnvironment
     @EnvironmentObject private var authSession: AuthSession
+    @Environment(\.colorScheme) private var colorScheme
     @State private var accounts: [ChemVaultAccount] = []
     @State private var newEmail = ""
     @State private var isLoading = false
@@ -14,6 +15,17 @@ struct AccountsView: View {
 
     var body: some View {
         List {
+            Section {
+                AccountsOverviewCard(
+                    accounts: accounts,
+                    primaryEmail: authSession.currentUser?.email,
+                    isLoading: isLoading || isMutating
+                )
+                .listRowInsets(EdgeInsets(top: 12, leading: 14, bottom: 12, trailing: 14))
+                .listRowSeparator(.hidden)
+                .listRowBackground(Color.clear)
+            }
+
             Section {
                 HStack {
                     TextField("new-account@chemvault.science", text: $newEmail)
@@ -72,6 +84,9 @@ struct AccountsView: View {
                 }
             }
         }
+        .scrollContentBackground(.hidden)
+        .background(ChemVaultWorkspaceBackground())
+        .tint(ChemVaultLoadingConfiguration.primaryColor(for: colorScheme))
         .overlay {
             if isLoading && accounts.isEmpty {
                 ProgressView()
@@ -216,6 +231,79 @@ struct AccountsView: View {
     private func update(_ accountId: Int, mutate: (inout ChemVaultAccount) -> Void) {
         guard let index = accounts.firstIndex(where: { $0.accountId == accountId }) else { return }
         mutate(&accounts[index])
+    }
+}
+
+private struct AccountsOverviewCard: View {
+    @Environment(\.colorScheme) private var colorScheme
+    let accounts: [ChemVaultAccount]
+    let primaryEmail: String?
+    let isLoading: Bool
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(spacing: 12) {
+                Image(systemName: "person.2.fill")
+                    .font(.title3.weight(.semibold))
+                    .foregroundStyle(.white)
+                    .frame(width: 42, height: 42)
+                    .background(
+                        LinearGradient(
+                            colors: ChemVaultTheme.primaryButtonColors(for: colorScheme),
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        ),
+                        in: RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    )
+
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Mail Accounts")
+                        .font(.headline.weight(.semibold))
+                    Text(primaryEmail ?? "Manage ChemVault addresses")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+
+                Spacer()
+
+                if isLoading {
+                    ChemVaultLoadingMark(size: 24, showsTrack: true)
+                }
+            }
+
+            HStack(spacing: 8) {
+                AccountMetric(title: "Total", value: "\(accounts.count)")
+                AccountMetric(title: "All Receive", value: "\(accounts.filter { $0.allReceive == 1 }.count)")
+                AccountMetric(title: "Pinned", value: accounts.isEmpty ? "-" : "1")
+            }
+        }
+        .padding(14)
+        .background(ChemVaultWorkspaceTheme.panelBackground(for: colorScheme), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .stroke(ChemVaultWorkspaceTheme.panelStroke(for: colorScheme), lineWidth: 1)
+        }
+        .shadow(color: ChemVaultWorkspaceTheme.panelShadow(for: colorScheme), radius: 14, x: 0, y: 8)
+    }
+}
+
+private struct AccountMetric: View {
+    @Environment(\.colorScheme) private var colorScheme
+    let title: String
+    let value: String
+
+    var body: some View {
+        VStack(spacing: 2) {
+            Text(value)
+                .font(.subheadline.weight(.semibold))
+            Text(title)
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 8)
+        .background(ChemVaultTheme.fieldBackground(for: colorScheme), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
     }
 }
 
