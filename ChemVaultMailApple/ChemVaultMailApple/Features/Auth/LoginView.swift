@@ -70,12 +70,17 @@ struct LoginView: View {
                     .transition(.opacity.combined(with: .move(edge: .top)))
             }
 
+            if isAuthenticating {
+                loginProgressStrip
+                    .transition(.opacity.combined(with: .move(edge: .top)))
+            }
+
             Button {
                 submit()
             } label: {
                 Group {
-                    if authSession.state == .checking {
-                        ChemVaultLoadingButtonLabel(title: "Signing In", size: 18)
+                    if isAuthenticating {
+                        ChemVaultLoadingButtonLabel(title: "Verifying", size: 18)
                     } else {
                         Label("Sign in", systemImage: "arrow.right.circle.fill")
                     }
@@ -102,10 +107,16 @@ struct LoginView: View {
         }
         .shadow(color: ChemVaultTheme.loginShadow(for: colorScheme), radius: 28, x: 0, y: 18)
         .opacity(hasAppeared ? 1 : 0)
-        .offset(y: hasAppeared ? 0 : 18)
-        .scaleEffect(hasAppeared ? 1 : 0.985)
+        .offset(y: hasAppeared ? (isAuthenticating ? -5 : 0) : 18)
+        .scaleEffect(hasAppeared ? (isAuthenticating ? 0.988 : 1) : 0.985)
         .animation(reduceMotion ? nil : ChemVaultMotion.entrance, value: hasAppeared)
+        .animation(reduceMotion ? nil : ChemVaultMotion.rootContent, value: isAuthenticating)
         .animation(ChemVaultMotion.fieldFocus, value: authSession.lastError)
+        .overlay {
+            ChemVaultLoginCardSweep(isActive: isAuthenticating)
+                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                .allowsHitTesting(false)
+        }
     }
 
     private var loginHeader: some View {
@@ -138,7 +149,7 @@ struct LoginView: View {
 
                 if !email.isEmpty {
                     Button {
-                        withAnimation(.easeInOut(duration: 0.15)) {
+                        withAnimation(ChemVaultMotion.fieldFocus) {
                             email = ""
                         }
                     } label: {
@@ -175,6 +186,7 @@ struct LoginView: View {
                                 .foregroundStyle(ChemVaultTheme.secondaryText(for: colorScheme))
                                 .lineLimit(1)
                                 .minimumScaleFactor(0.74)
+                                .contentTransition(.opacity)
 
                             Image(systemName: "chevron.down")
                                 .font(.caption.weight(.semibold))
@@ -185,7 +197,8 @@ struct LoginView: View {
                     .buttonStyle(.plain)
                 }
             }
-            .animation(.easeInOut(duration: 0.18), value: email.isEmpty)
+            .animation(ChemVaultMotion.fieldFocus, value: email.isEmpty)
+            .animation(ChemVaultMotion.fieldFocus, value: selectedDomainSuffix)
         }
     }
 
@@ -207,7 +220,7 @@ struct LoginView: View {
                 }
 
                 Button {
-                    withAnimation(.easeInOut(duration: 0.18)) {
+                    withAnimation(ChemVaultMotion.fieldFocus) {
                         isPasswordVisible.toggle()
                     }
                 } label: {
@@ -215,6 +228,7 @@ struct LoginView: View {
                         .font(.subheadline)
                         .foregroundStyle(isPasswordVisible ? ChemVaultLoadingConfiguration.primaryColor(for: colorScheme) : ChemVaultTheme.mutedText(for: colorScheme))
                         .frame(width: 22)
+                        .contentTransition(.symbolEffect(.replace))
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel(isPasswordVisible ? "Hide password" : "Show password")
@@ -239,6 +253,32 @@ struct LoginView: View {
                 Label("API", systemImage: "server.rack")
             }
             .buttonStyle(ChemVaultLinkButtonStyle())
+        }
+        .opacity(isAuthenticating ? 0.68 : 1)
+        .animation(reduceMotion ? nil : ChemVaultMotion.fieldFocus, value: isAuthenticating)
+    }
+
+    private var loginProgressStrip: some View {
+        HStack(spacing: 10) {
+            ChemVaultLoadingMark(size: 20, showsTrack: true)
+
+            Text("Securing mailbox")
+                .lineLimit(1)
+
+            Spacer(minLength: 8)
+
+            Image(systemName: "shield.lefthalf.filled")
+                .font(.subheadline)
+                .symbolEffect(.pulse, value: isAuthenticating)
+        }
+        .font(.footnote.weight(.semibold))
+        .foregroundStyle(ChemVaultLoadingConfiguration.primaryColor(for: colorScheme))
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .background(ChemVaultTheme.connectionBackground(for: colorScheme), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .stroke(ChemVaultLoadingConfiguration.primaryColor(for: colorScheme).opacity(0.24), lineWidth: 1)
         }
     }
 
@@ -269,9 +309,10 @@ struct LoginView: View {
         }
         .buttonStyle(.plain)
         .frame(width: width)
-        .opacity(hasAppeared ? 1 : 0)
-        .offset(y: hasAppeared ? 0 : 12)
+        .opacity(hasAppeared ? (isAuthenticating ? 0.72 : 1) : 0)
+        .offset(y: hasAppeared ? (isAuthenticating ? 5 : 0) : 12)
         .animation(reduceMotion ? nil : ChemVaultMotion.entrance.delay(0.08), value: hasAppeared)
+        .animation(reduceMotion ? nil : ChemVaultMotion.fieldFocus, value: isAuthenticating)
     }
 
     private func errorBanner(_ message: String) -> some View {
@@ -308,6 +349,10 @@ struct LoginView: View {
 
     private var isSubmitDisabled: Bool {
         trimmedEmail.isEmpty || trimmedPassword.isEmpty || authSession.state == .checking
+    }
+
+    private var isAuthenticating: Bool {
+        authSession.state == .checking
     }
 
     private var loginEmail: String {
@@ -378,8 +423,41 @@ private struct ChemVaultLoginField<Content: View>: View {
             }
             .shadow(color: ChemVaultLoadingConfiguration.primaryColor(for: colorScheme).opacity(isFocused ? 0.16 : 0), radius: 10, x: 0, y: 5)
             .scaleEffect(isFocused ? 1.01 : 1)
-            .animation(.easeInOut(duration: 0.18), value: isFocused)
+            .animation(ChemVaultMotion.fieldFocus, value: isFocused)
         }
+    }
+}
+
+private struct ChemVaultLoginCardSweep: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.colorScheme) private var colorScheme
+    var isActive: Bool
+
+    var body: some View {
+        TimelineView(.animation) { timeline in
+            sweepFrame(date: timeline.date)
+        }
+        .opacity(isActive ? 1 : 0)
+        .animation(reduceMotion ? nil : ChemVaultMotion.fieldFocus, value: isActive)
+    }
+
+    private func sweepFrame(date: Date) -> some View {
+        let accent = ChemVaultLoadingConfiguration.primaryColor(for: colorScheme)
+        let time = reduceMotion ? 0 : date.timeIntervalSinceReferenceDate
+        let offset = CGFloat((time.truncatingRemainder(dividingBy: 1.8) / 1.8) * 2 - 1)
+
+        return LinearGradient(
+            colors: [
+                .clear,
+                accent.opacity(colorScheme == .dark ? 0.11 : 0.08),
+                .clear
+            ],
+            startPoint: .topLeading,
+            endPoint: .bottomTrailing
+        )
+        .rotationEffect(.degrees(8))
+        .offset(x: offset * 360)
+        .blendMode(.plusLighter)
     }
 }
 

@@ -7,26 +7,43 @@ import UIKit
 
 struct ContentView: View {
     @EnvironmentObject private var authSession: AuthSession
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var launchLoadingComplete = false
     @State private var bootstrapStarted = false
+    @State private var isShowingAuthSuccessTransition = false
 
     var body: some View {
-        Group {
-            if !launchLoadingComplete || authSession.state == .checking {
-                startupLoading
-            } else {
-                switch authSession.state {
-                case .checking:
+        ZStack {
+            Group {
+                if !launchLoadingComplete {
                     startupLoading
-                case .signedOut:
-                    LoginView()
-                case .signedIn:
-                    AppShellView()
+                } else {
+                    switch authSession.state {
+                    case .checking, .signedOut:
+                        LoginView()
+                            .transition(ChemVaultRootTransition.login)
+                    case .signedIn:
+                        AppShellView()
+                            .transition(ChemVaultRootTransition.app)
+                    }
                 }
+            }
+            .scaleEffect(isShowingAuthSuccessTransition ? 0.985 : 1)
+            .blur(radius: isShowingAuthSuccessTransition ? 10 : 0)
+            .animation(reduceMotion ? nil : ChemVaultMotion.rootContent, value: authSession.state)
+            .animation(reduceMotion ? nil : ChemVaultMotion.screenTransition, value: isShowingAuthSuccessTransition)
+
+            if isShowingAuthSuccessTransition {
+                ChemVaultAuthSuccessTransitionView()
+                    .transition(ChemVaultRootTransition.successOverlay)
+                    .zIndex(2)
             }
         }
         .task {
             await bootstrapOnce()
+        }
+        .onChange(of: authSession.state) { oldState, newState in
+            handleAuthStateChange(from: oldState, to: newState)
         }
     }
 
@@ -53,6 +70,34 @@ struct ContentView: View {
             launchLoadingComplete = true
         }
     }
+
+    private func handleAuthStateChange(from oldState: AuthState, to newState: AuthState) {
+        guard launchLoadingComplete,
+              oldState == .checking,
+              newState == .signedIn,
+              !isShowingAuthSuccessTransition else {
+            return
+        }
+
+        showAuthenticationSuccessTransition()
+    }
+
+    private func showAuthenticationSuccessTransition() {
+        if reduceMotion {
+            isShowingAuthSuccessTransition = true
+        } else {
+            withAnimation(ChemVaultMotion.authSuccess) {
+                isShowingAuthSuccessTransition = true
+            }
+        }
+
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: UInt64(ChemVaultTransitionConfiguration.successPresentationMilliseconds) * 1_000_000)
+            withAnimation(reduceMotion ? nil : ChemVaultMotion.screenTransition) {
+                isShowingAuthSuccessTransition = false
+            }
+        }
+    }
 }
 
 #Preview {
@@ -75,11 +120,133 @@ enum ChemVaultLoadingConfiguration {
     }
 }
 
+enum ChemVaultTransitionConfiguration {
+    static let successPresentationMilliseconds = 980
+    static let successTitle = "Authenticated"
+    static let successSubtitle = "Opening secure mailbox"
+}
+
 enum ChemVaultMotion {
     static let screenTransition = Animation.smooth(duration: 0.34)
     static let entrance = Animation.spring(response: 0.62, dampingFraction: 0.88)
     static let quickPress = Animation.spring(response: 0.22, dampingFraction: 0.78)
     static let fieldFocus = Animation.smooth(duration: 0.2)
+    static let rootContent = Animation.spring(response: 0.54, dampingFraction: 0.9)
+    static let authSuccess = Animation.spring(response: 0.68, dampingFraction: 0.86)
+}
+
+enum ChemVaultRootTransition {
+    static var login: AnyTransition {
+        .opacity.combined(with: .scale(scale: 0.985))
+    }
+
+    static var app: AnyTransition {
+        .opacity.combined(with: .scale(scale: 1.012))
+    }
+
+    static var successOverlay: AnyTransition {
+        .opacity.combined(with: .scale(scale: 0.94))
+    }
+}
+
+struct ChemVaultAuthSuccessTransitionView: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.colorScheme) private var colorScheme
+    @State private var isActive = false
+
+    var body: some View {
+        ZStack {
+            ChemVaultBrandBackground()
+
+            Rectangle()
+                .fill(.ultraThinMaterial)
+                .ignoresSafeArea()
+
+            VStack(spacing: 18) {
+                ZStack {
+                    ChemVaultSuccessPulse(size: 168, isActive: isActive)
+
+                    ChemVaultLogoBadge(size: 82, shadowRadius: 18)
+                        .scaleEffect(isActive ? 1 : 0.82)
+                }
+                .frame(width: 190, height: 190)
+
+                VStack(spacing: 6) {
+                    Label(ChemVaultTransitionConfiguration.successTitle, systemImage: "checkmark.seal.fill")
+                        .font(.title3.weight(.semibold))
+                        .foregroundStyle(ChemVaultTheme.brandText(for: colorScheme))
+                        .symbolEffect(.bounce, value: isActive)
+
+                    Text(ChemVaultTransitionConfiguration.successSubtitle)
+                        .font(.subheadline)
+                        .foregroundStyle(ChemVaultTheme.secondaryText(for: colorScheme))
+                }
+                .opacity(isActive ? 1 : 0)
+                .offset(y: isActive ? 0 : 10)
+            }
+            .padding(28)
+            .background(ChemVaultTheme.loginCardBackground(for: colorScheme), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .stroke(ChemVaultTheme.loginCardStroke(for: colorScheme), lineWidth: 1)
+            }
+            .shadow(color: ChemVaultTheme.loginShadow(for: colorScheme), radius: 34, x: 0, y: 22)
+            .padding(.horizontal, 32)
+            .scaleEffect(isActive ? 1 : 0.96)
+        }
+        .onAppear {
+            if reduceMotion {
+                isActive = true
+            } else {
+                withAnimation(ChemVaultMotion.authSuccess) {
+                    isActive = true
+                }
+            }
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(ChemVaultTransitionConfiguration.successTitle). \(ChemVaultTransitionConfiguration.successSubtitle).")
+    }
+}
+
+private struct ChemVaultSuccessPulse: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.colorScheme) private var colorScheme
+    var size: CGFloat
+    var isActive: Bool
+
+    var body: some View {
+        TimelineView(.animation) { timeline in
+            pulseFrame(date: timeline.date)
+        }
+        .frame(width: size, height: size)
+    }
+
+    private func pulseFrame(date: Date) -> some View {
+        let accent = ChemVaultLoadingConfiguration.primaryColor(for: colorScheme)
+        let time = reduceMotion ? 0 : date.timeIntervalSinceReferenceDate
+        let orbit = (time.truncatingRemainder(dividingBy: 3.2) / 3.2) * 360
+        let breath = reduceMotion ? 1 : 1 + sin(time / 1.6 * 2 * .pi) * 0.035
+
+        return ZStack {
+            ForEach(0..<3, id: \.self) { index in
+                Circle()
+                    .stroke(accent.opacity(0.08 + Double(index) * 0.045), lineWidth: 1.2)
+                    .scaleEffect(isActive ? 1 + CGFloat(index) * 0.18 : 0.48)
+                    .opacity(isActive ? 1 - Double(index) * 0.2 : 0)
+            }
+
+            Circle()
+                .trim(from: 0.04, to: 0.34)
+                .stroke(accent.opacity(colorScheme == .dark ? 0.84 : 0.66), style: StrokeStyle(lineWidth: 2.4, lineCap: .round))
+                .rotationEffect(.degrees(orbit))
+                .scaleEffect(breath)
+
+            Circle()
+                .trim(from: 0.58, to: 0.8)
+                .stroke(accent.opacity(0.32), style: StrokeStyle(lineWidth: 1.5, lineCap: .round))
+                .rotationEffect(.degrees(-orbit * 0.72))
+        }
+    }
 }
 
 struct ChemVaultLoadingView: View {

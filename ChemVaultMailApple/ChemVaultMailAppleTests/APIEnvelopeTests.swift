@@ -58,6 +58,12 @@ final class APIEnvelopeTests: XCTestCase {
         XCTAssertEqual(ChemVaultLoadingConfiguration.title, "ChemVault Mail")
     }
 
+    func testChemVaultTransitionConfigurationIncludesAuthSuccessMoment() {
+        XCTAssertEqual(ChemVaultTransitionConfiguration.successPresentationMilliseconds, 980)
+        XCTAssertEqual(ChemVaultTransitionConfiguration.successTitle, "Authenticated")
+        XCTAssertEqual(ChemVaultTransitionConfiguration.successSubtitle, "Opening secure mailbox")
+    }
+
     func testChemVaultBrandAssetsMatchNativeLoginDesign() {
         XCTAssertEqual(ChemVaultBrandAssets.backgroundImageName, "ChemVaultLoginBackground")
         XCTAssertEqual(ChemVaultBrandAssets.logoImageName, "ChemVaultLogo")
